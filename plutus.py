@@ -1,6 +1,6 @@
 # Plutus Bitcoin Brute Forcer
 # Made by Isaac Delly
-# https://github.com/Isaacdelly/Plutus
+# https://githkkkk
 
 from fastecdsa import keys, curve
 from ellipticcurve.privateKey import PrivateKey
