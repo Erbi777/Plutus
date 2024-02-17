@@ -1,13 +1,7 @@
-# Plutus Bitcoin Brute Forcer
-# Made by Isaac Delly
-# https://githkkkk
-
 from fastecdsa import keys, curve
-from ellipticcurve.privateKey import PrivateKey
 import platform
 import multiprocessing
 import hashlib
-import binascii
 import os
 import sys
 import time
@@ -19,45 +13,38 @@ def generate_private_key():
 
 def private_key_to_public_key(private_key, fastecdsa):
     if fastecdsa:
-        key = keys.get_public_key(int('0x' + private_key, 0), curve.secp256k1)
-        return '04' + (hex(key.x)[2:] + hex(key.y)[2:]).zfill(128)
+        key = keys.get_public_key(int(private_key, 16), curve.secp256k1)
+        return '04' + (hex(key.x)[2:].zfill(64) + hex(key.y)[2:].zfill(64))
     else:
-        pk = PrivateKey().fromString(bytes.fromhex(private_key))
-        return '04' + pk.publicKey().toString().hex().upper()
+        pk = keys.get_public_key(int(private_key, 16), curve.secp256k1)
+        return '04' + (hex(pk.x)[2:].zfill(64) + hex(pk.y)[2:].zfill(64))
 
 def public_key_to_address(public_key):
-    output = []
     alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
     var = hashlib.new('ripemd160')
-    encoding = binascii.unhexlify(public_key.encode())
+    encoding = bytes.fromhex(public_key)
     var.update(hashlib.sha256(encoding).digest())
-    var_encoded = ('00' + var.hexdigest()).encode()
-    digest = hashlib.sha256(binascii.unhexlify(var_encoded)).digest()
-    var_hex = '00' + var.hexdigest() + hashlib.sha256(digest).hexdigest()[0:8]
-    count = [char != '0' for char in var_hex].index(True) // 2
-    n = int(var_hex, 16)
+    var_encoded = b'00' + var.digest()
+    checksum = hashlib.sha256(hashlib.sha256(var_encoded).digest()).digest()
+    var_hex = var_encoded + checksum[:4]
+    n = int.from_bytes(var_hex, 'big')
+    output = ''
     while n > 0:
         n, remainder = divmod(n, 58)
-        output.append(alphabet[remainder])
-    for i in range(count): output.append(alphabet[0])
-    return ''.join(output[::-1])
+        output = alphabet[remainder] + output
+    return output
 
 def private_key_to_wif(private_key):
-    digest = hashlib.sha256(binascii.unhexlify('80' + private_key)).hexdigest()
-    var = hashlib.sha256(binascii.unhexlify(digest)).hexdigest()
-    var = binascii.unhexlify('80' + private_key + var[0:8])
-    alphabet = chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-    value = pad = 0
+    extended_key = bytes.fromhex('80' + private_key)
+    checksum = hashlib.sha256(hashlib.sha256(extended_key).digest()).digest()[:4]
+    var = extended_key + checksum
+    alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+    value = int.from_bytes(var, 'big')
     result = ''
-    for i, c in enumerate(var[::-1]): value += 256**i * c
-    while value >= len(alphabet):
-        div, mod = divmod(value, len(alphabet))
-        result, value = chars[mod] + result, div
-    result = chars[value] + result
-    for c in var:
-        if c == 0: pad += 1
-        else: break
-    return chars[0] * pad + result
+    while value > 0:
+        value, mod = divmod(value, 58)
+        result = alphabet[mod] + result
+    return '1' * (len(private_key) - len(private_key.lstrip('0'))) + result
 
 def main(database, args):
     while True:
